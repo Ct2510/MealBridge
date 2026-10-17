@@ -86,7 +86,7 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm test
 ```
 
-Node 22+ 僅用於測試，不影響無前端建置的啟動方式。v1.1 本機 **61 項 Python + 17 項 Node 測試**通過：原有決策／授權／快照，加上距離邊界、舊資料庫升級、分享版本衝突、邀請撤銷、外部同意／上游失敗、位置約略化、查詢配額、定位成功／拒絕／逾時與 PWA 快取。LinkeDOM + 模擬 API 驗證頁面事件、來源同意、範圍提交、登出及過期請求不還原私人資料；不是實際瀏覽器端到端或視覺測試。CI 設定 Windows / Ubuntu × Python 3.11 / 3.12 / 3.13；實際遠端結果以 [Actions](https://github.com/Ct2510/MealBridge/actions) 為準。
+Node 22+ 僅用於測試，不影響無前端建置的啟動方式。v1.1 本機 **61 項 Python + 18 項 Node 測試**通過：原有決策／授權／快照，加上距離邊界、舊資料庫升級、分享版本衝突、邀請撤銷、外部同意／上游失敗、位置約略化、查詢配額、定位成功／拒絕／逾時與 PWA 快取。LinkeDOM + 模擬 API 驗證頁面事件、來源同意、範圍提交、登出及過期請求不還原私人資料；不是實際瀏覽器端到端或視覺測試。CI 設定 Windows / Ubuntu × Python 3.11 / 3.12 / 3.13；實際遠端結果以 [Actions](https://github.com/Ct2510/MealBridge/actions) 為準。
 
 ## 架構與邊界
 
