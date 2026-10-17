@@ -58,14 +58,14 @@ class Store:
         finally:
             connection.close()
 
-    def throttle(self, bucket, limit):
+    def throttle(self, bucket, limit, window_seconds=3600):
         now = int(self.clock())
         with self.transaction() as connection:
             row = connection.execute("SELECT * FROM throttle WHERE bucket=?", (bucket,)).fetchone()
             if row and row["resets"] > now and row["count"] >= limit:
-                raise HTTPException(429, "嘗試過於頻繁，請一小時後再試")
+                raise HTTPException(429, "查詢或嘗試次數已達限制，請稍後再試")
             if not row or row["resets"] <= now:
-                connection.execute("INSERT OR REPLACE INTO throttle VALUES (?,1,?)", (bucket, now + 3600))
+                connection.execute("INSERT OR REPLACE INTO throttle VALUES (?,1,?)", (bucket, now + window_seconds))
             else:
                 connection.execute("UPDATE throttle SET count=count+1 WHERE bucket=?", (bucket,))
 
@@ -103,7 +103,7 @@ def setup(app: FastAPI, store: Store, product: str):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
+            "img-src 'self' data:; connect-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; "
             "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         )
         response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "no-cache"
@@ -189,7 +189,7 @@ def setup(app: FastAPI, store: Store, product: str):
 
     @app.get("/{filename}", include_in_schema=False)
     def asset(filename: str):
-        allowed = {"app.js", "styles.css", "sw.js", "manifest.webmanifest", "icon.svg",
+        allowed = {"app.js", "geolocation.js", "styles.css", "sw.js", "manifest.webmanifest", "icon.svg",
                    "icon-192.png", "icon-512.png"}
         if filename not in allowed or not (ROOT / filename).is_file():
             raise HTTPException(404, "找不到檔案")

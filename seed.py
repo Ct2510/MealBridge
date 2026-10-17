@@ -16,8 +16,9 @@ def fixture(today):
         ("old", "昨日小館", "台式", 3, [("鮮蔬飯", 80, "vegetarian", ["none"], False)]),
         ("unknown", "未明料理所", "台式", 5, [("今日特餐", 90, "unknown", ["none"], None)]),
     ]
-    for identifier, name, cuisine, walk, dishes in specifications:
+    for index, (identifier, name, cuisine, walk, dishes) in enumerate(specifications):
         restaurants.append({"id": identifier, "name": name, "cuisine": cuisine, "walk_minutes": walk,
+                            "coordinates": {"latitude": 25.033 + [0.0018, -0.003, 0.005, -0.008, 0.012][index], "longitude": 121.5654 + [0.002, 0.004, -0.003, 0.008, 0.012][index]},
                             "source_label": "原創虛構測試菜單，非真實店家或價格", "source_url": None, "fictional": True,
                             "verified_on": str(today - timedelta(days=45) if identifier == "old" else today),
                             "dishes": [{"id": f"dish-{index}", "name": dish[0], "price": dish[1], "diet": dish[2],

@@ -3,17 +3,18 @@ import json
 import os
 import secrets
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import Field
 
 from common import Store, dump, setup
 from domain import Catalog, Preferences, StrictModel, recommend
+from location import NearbyInput, SearchArea, fetch_openstreetmap, within_area
 
 
 class RoomInput(StrictModel):
     title: str = Field(min_length=1, max_length=70)
+    area: SearchArea | None = None
 
 
 class JoinInput(StrictModel):
@@ -48,8 +49,12 @@ def create_app(path=None, clock=None):
                 id INTEGER PRIMARY KEY, user_id TEXT REFERENCES users(id), restaurant_id TEXT, note TEXT, created INTEGER
             );
         """)
-    app = FastAPI(title="MealBridge", version="1.0.0", docs_url=None, redoc_url=None)
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(rooms)")}
+        if "area" not in columns:
+            connection.execute("ALTER TABLE rooms ADD COLUMN area TEXT")
+    app = FastAPI(title="MealBridge", version="1.1.0", docs_url=None, redoc_url=None)
     app.state.store = store
+    app.state.nearby_provider = fetch_openstreetmap
     current = setup(app, store, "MealBridge")
 
     def catalog_row(connection):
@@ -75,8 +80,28 @@ def create_app(path=None, clock=None):
             raise HTTPException(409, "所有成員填妥偏好後才能進行比較")
         people = [{"nickname": member["nickname"], "preferences": json.loads(member["preferences"])} for member in members]
         today = datetime.fromtimestamp(store.clock(), timezone.utc).date()
-        result = recommend(json.loads(catalog["data"]), people, today)
-        return {**result, "room_version": room["version"], "catalog_version": catalog["version"]}
+        area = json.loads(room["area"]) if room["area"] else None
+        result = recommend(json.loads(catalog["data"]), people, today, area)
+        return {**result, "room_version": room["version"], "catalog_version": catalog["version"], "area": area}
+
+    @app.post("/api/nearby/catalog")
+    def nearby_catalog(payload: SearchArea):
+        with store.transaction() as connection:
+            catalog = json.loads(catalog_row(connection)["data"])
+            return {"restaurants": within_area(catalog["restaurants"], payload.model_dump()),
+                    "source": "catalog", "distance_kind": "straight_line", "area": payload.model_dump()}
+
+    @app.post("/api/nearby/openstreetmap")
+    def nearby_openstreetmap(payload: NearbyInput, request: Request):
+        if not payload.external_consent:
+            raise HTTPException(422, "需明確同意將搜尋中心與半徑送至 Overpass / OpenStreetMap 服務")
+        address = request.client.host if request.client else "unknown"
+        store.throttle("nearby:" + address, 20)
+        store.throttle("nearby:global", 80, 86400)
+        return {"restaurants": app.state.nearby_provider(payload), "source": "openstreetmap",
+                "distance_kind": "straight_line", "attribution": "© OpenStreetMap contributors · ODbL",
+                "attribution_url": "https://www.openstreetmap.org/copyright", "limit": 80,
+                "warning": "社群店家資料可能不完整；無查核菜單、價格、飲食保證或即時營業判斷"}
 
     @app.get("/api/catalog")
     def catalog():
@@ -110,9 +135,32 @@ def create_app(path=None, clock=None):
             if count >= 30:
                 raise HTTPException(409, "每個帳號最多建立 30 個決策室")
             room_id, invite = secrets.token_urlsafe(12), secrets.token_urlsafe(24)
-            connection.execute("INSERT INTO rooms (id,title,host,invite) VALUES (?,?,?,?)", (room_id, payload.title, user["id"], invite))
+            connection.execute("INSERT INTO rooms (id,title,host,invite,area) VALUES (?,?,?,?,?)", (room_id, payload.title, user["id"], invite, payload.area.model_dump_json() if payload.area else None))
             connection.execute("INSERT INTO members VALUES (?,?,NULL)", (room_id, user["id"]))
             return {"id": room_id, "invite": invite}
+
+    @app.put("/api/rooms/{room_id}/area")
+    def update_area(room_id: str, payload: SearchArea, request: Request):
+        with store.transaction() as connection:
+            user = current(connection, request)
+            room = room_member(connection, room_id, user)
+            if room["host"] != user["id"]:
+                raise HTTPException(403, "只有發起人可以修改共同集合點")
+            if room["snapshot"]:
+                raise HTTPException(409, "已定案，不能變更集合點")
+            connection.execute("UPDATE rooms SET area=?,version=version+1 WHERE id=?", (payload.model_dump_json(), room_id))
+            return {"ok": True}
+
+    @app.post("/api/rooms/{room_id}/rotate-invite")
+    def rotate_invite(room_id: str, request: Request):
+        with store.transaction() as connection:
+            user = current(connection, request)
+            room = room_member(connection, room_id, user)
+            if room["host"] != user["id"]:
+                raise HTTPException(403, "只有發起人可以更新邀請碼")
+            invite = secrets.token_urlsafe(24)
+            connection.execute("UPDATE rooms SET invite=?,version=version+1 WHERE id=?", (invite, room_id))
+            return {"invite": invite, "message": "舊邀請已失效；既有成員仍保留存取權"}
 
     @app.post("/api/rooms/join")
     def join_room(payload: JoinInput, request: Request):
@@ -141,6 +189,7 @@ def create_app(path=None, clock=None):
                 (room_id,))]
             preferences = connection.execute("SELECT preferences FROM members WHERE room=? AND user_id=?", (room_id, user["id"])).fetchone()[0]
             return {"id": room_id, "title": room["title"], "version": room["version"], "is_host": room["host"] == user["id"],
+                    "area": json.loads(room["area"]) if room["area"] else None,
                     "invite": room["invite"], "members": members, "preferences": json.loads(preferences) if preferences else None,
                     "snapshot": json.loads(room["snapshot"]) if room["snapshot"] else None}
 
@@ -178,7 +227,7 @@ def create_app(path=None, clock=None):
             if not selected:
                 raise HTTPException(409, "這間餐廳無法滿足全員條件")
             snapshot = {"selected": selected, "room_version": room["version"], "catalog_version": result["catalog_version"],
-                        "decided_at": int(store.clock()), "policy": "hard-constraints/max-min-v1"}
+                        "area": result["area"], "decided_at": int(store.clock()), "policy": "hard-constraints/max-min-v2"}
             connection.execute("UPDATE rooms SET snapshot=?,version=version+1 WHERE id=?", (dump(snapshot), room_id))
             return snapshot
 

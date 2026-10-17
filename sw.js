@@ -1,5 +1,5 @@
-const CACHE = "mealbridge-shell-v1";
-const SHELL = ["/", "/app.js", "/styles.css", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png"];
+const CACHE = "mealbridge-shell-v2";
+const SHELL = ["/", "/app.js", "/geolocation.js", "/styles.css", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL))));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys =>
   Promise.all(keys.filter(key => key.startsWith("mealbridge-shell-") && key !== CACHE).map(key => caches.delete(key))))

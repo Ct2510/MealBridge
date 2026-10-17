@@ -2,25 +2,28 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#17684e">
-<meta name="description" content="為每一位朋友找到符合預算與飲食偏好的一餐">
-<title>MealBridge · 一起吃，不必將就</title>
-<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg">
-<link rel="apple-touch-icon" href="/icon-192.png"><link rel="stylesheet" href="/styles.css">
-<script src="/app.js" defer></script>
+<meta name="theme-color" content="#b7492d"><meta name="description" content="從附近店家到全員可接受的一餐，定位、距離與共同餐點決策。">
+<title>MealBridge｜這一餐，一起決定</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/styles.css"><script src="/geolocation.js" defer></script><script src="/app.js" defer></script>
 </head>
 <body>
-<div id="offline" class="offline hidden">目前離線 · 只保留操作介面，不會快取個人資料或代送報名。</div>
-<header><a class="brand" href="/">Meal<span>Bridge.</span></a>
-<span class="subtitle">A TABLE FOR EVERYONE</span>
-<nav aria-label="帳號操作"><button id="install" class="secondary hidden">安裝</button><span id="identity" class="identity">訪客</span><button id="auth">登入 / 註冊</button><button id="logout" class="secondary hidden">登出</button></nav></header>
-<main><div class="empty">正在讀取資料…</div></main>
-<footer>餐廳與價格為明確標示的虛構示範；不提供過敏原或醫療飲食保證。<br>原創 AI 協作作品集初版 · 可自架 · PWA 安裝方式依瀏覽器而異</footer>
-<dialog aria-labelledby="auth-title"><h2 id="auth-title">從一次共餐開始</h2><p class="muted">示範用帳號，不需要提供電話或電子郵件。</p>
-<form id="auth-form" class="stack"><label>帳號（3–32 字，英數或底線）<input name="username" autocomplete="username" pattern="[a-zA-Z0-9_]{3,32}" required></label>
-<label>密碼（至少 10 字，請勿重用真實密碼）<input name="password" type="password" minlength="10" maxlength="128" autocomplete="current-password" required></label>
-<label>暱稱（註冊使用）<input name="nickname" maxlength="30" value="新朋友" required></label>
-<div class="row"><button type="submit" data-mode="login">登入</button><button type="submit" data-mode="register" class="secondary">建立帳號</button><button type="button" id="close-auth" class="link">關閉</button></div></form></dialog>
+<a class="skip" href="#workspace">跳到主要內容</a>
+<div id="offline" class="offline hidden">目前離線。位置、個人條件及報名資料不會快取或代送。</div>
+<header class="site-header">
+<a class="brand" href="/" aria-label="MealBridge 首頁"><span class="brand-symbol" aria-hidden="true">m.</span><span>MealBridge<small>這一餐，一起決定</small></span></a>
+<nav class="main-nav" aria-label="功能導覽"><button data-view="explore" aria-current="page">附近探索</button><button data-view="rooms">一起選餐</button><button data-view="catalog">菜單與來源</button></nav>
+<div class="account-nav"><button id="install" class="text-button hidden">安裝</button><span id="identity">訪客</span><button id="auth" class="outline small">登入 / 註冊</button><button id="logout" class="text-button hidden">登出</button></div>
+</header>
+<main id="workspace"><p class="empty">正在準備附近的選擇…</p></main>
+<footer><span class="brand-mini">MealBridge</span><span>先照顧每個人的條件，再決定這一餐。</span><span>示範菜單 ≠ 真實店家資料 · 不提供過敏原保證</span></footer>
+<dialog id="auth-dialog" aria-labelledby="auth-title"><button id="close-auth" type="button" class="dialog-close" aria-label="關閉登入">×</button><p class="overline">YOUR TABLE, YOUR PEOPLE</p><h2 id="auth-title">留一個位置給你。</h2><p class="muted">建立示範用帳號，無須電話或 Email。請勿重用真實密碼。</p>
+<form id="auth-form" class="form-stack"><label>帳號（英數或底線）<input name="username" autocomplete="username" pattern="[a-zA-Z0-9_]{3,32}" minlength="3" maxlength="32" required></label><label>密碼（至少 10 字）<input type="password" name="password" autocomplete="current-password" minlength="10" maxlength="128" required></label><label>暱稱（註冊時使用）<input name="nickname" maxlength="30" value="新朋友" required></label><div class="button-row"><button data-mode="login">登入</button><button data-mode="register" class="outline">建立帳號</button></div></form></dialog>
+<dialog id="location-dialog" aria-labelledby="location-title"><button class="dialog-close" type="button" data-close="location-dialog" aria-label="關閉選點">×</button><p class="overline">START SOMEWHERE</p><h2 id="location-title">從哪裡開始找？</h2><p class="muted">你的定位只在這次開啟頁面期間使用。不會自動存入決策室或持續追蹤。</p><button type="button" data-action="locate" class="location-cta">◎ 使用我的目前位置</button><p class="caption">定位需瀏覽器授權。傳出的座標約略化至約 100 公尺，定位誤差可能更大。</p><div class="or-divider">或自己選擇</div>
+<form id="location-form" class="form-stack"><label>快速選點<select id="location-preset"><option value="manual">手動輸入座標</option value="demo">台北示範區（非目前位置）</option><option value="station">台北車站周邊（近似座標）</option><option value="taichung">台中市中心周邊（近似座標）</option></select></label><label>這個地點的名稱<input name="label" maxlength="70" required></label><div class="form-grid"><label>緯度<input name="latitude" type="number" step="any" min="-90" max="90" required></label><label>經度<input name="longitude" type="number" step="any" min="-180" max="180" required></label></div><button>使用這個搜尋點</button></form></dialog>
+<dialog id="external-dialog" aria-labelledby="external-title"><p class="overline">YOU STAY IN CONTROL</p><h2 id="external-title">先確認資料會去哪裡。</h2><p id="external-description"></p><p class="muted">這是外部社群服務，資料可能不完整或暫時無法使用。你可以取消，繼續使用本機示範菜單。沒有付費 API 或背景追蹤。</p><div class="button-row"><button id="external-confirm" type="button">同意並載入</button><button class="outline" type="button" data-close="external-dialog">暫不使用</button></div></dialog>
+<dialog id="restaurant-dialog" aria-label="餐廳與菜單詳情"></dialog>
+<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">確認操作</h2><p id="confirm-description"></p><div class="button-row"><button id="confirm-yes" type="button">確定</button><button class="outline" type="button" data-close="confirm-dialog">取消</button></div></dialog>
 <div id="message" role="alert" aria-live="polite"></div>
 </body></html>
 

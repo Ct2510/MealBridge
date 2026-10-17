@@ -18,7 +18,7 @@ SQLite 的寫入鎖機制參考 [官方交易文件](https://www.sqlite.org/lang
 - Cookie HttpOnly / SameSite=Strict；正式 HTTPS 設 `COOKIE_SECURE=1`。所有寫入必須有自訂標頭，同時拒絕不同 Origin；無跨域 CORS 開放。
 - 帳號／登入採每來源位址固定時窗節流。不是分散式防機器人方案；共享 IP、反向代理信任設定與帳號復原仍有正式部署限制。
 - 未加入決策室回 404，不揭露存在與否。原始偏好只回傳本人；成員同意共餐時須知道餐點與餘額會在結果中分享，仍可能推知飲食偏好。
-- 邀請碼可讓新帳號加入，並非逐一批准的 ACL；避免外洩。本版沒有邀請撤銷或踢除功能，僅適合信任的小群體示範。
+- 邀請碼可讓新帳號加入，並非逐一批准的 ACL；避免外洩。v1.1 可由主辦更新邀請碼撤銷舊連結，但不踢除既有成員，仍適合信任的小群體示範。
 - 伺服器只服務明確列出的靜態檔，不暴露 Python、資料庫或設定。CSP 禁止外部腳本及 inline script；動態文字做 HTML escaping。
 - JSON 宣告長度上限 300 KB；仍應由正式反向代理限制實際串流大小與連線數。
 
@@ -33,3 +33,17 @@ SQLite 的寫入鎖機制參考 [官方交易文件](https://www.sqlite.org/lang
 service worker 只安裝快取公開 shell（HTML、JS、CSS、manifest、圖示），線上優先，斷線才回介面；完全不攔截 API 或 POST。開啟離線頁面只顯示無法讀取提示，不把舊私人結果當最新結果。寫入失敗不佇列背景重送；網路錯誤須重新讀取確認是否已提交，再決定是否重試。
 
 資料放預設 `data/`，`.gitignore` 排除。備份在停止寫入後複製資料庫，或使用 SQLite online backup；還原前先在隔離環境演練。未實作自動備份或帳號資料刪除流程。
+
+## v1.1 位置資料流
+
+`geolocation.js` 將瀏覽器定位包成僅在按鈕呼叫的 Promise；支援安全環境、有效座標與錯誤1／2／3。定位結果先四捨五入至小數三位，實際誤差另顯示；拒絕時仍能手動選點。不是 GPS 晶片 API 或背景追蹤。
+
+`location.py` 用 Haversine 算球面直線距離；限制查詢半徑、經緯度與非有限值。搜尋 API 不保存選點，只對主辦明確分享的 room.area 保存 JSON。既有資料庫以 `ALTER TABLE` 加 nullable area，不重置原紀錄；沒有全功能 migration framework。
+
+OSM provider 固定 HTTPS 目的地、不接受任意 URL、不跟隨 redirect、15 秒網路 timeout、上游 QL timeout 12 秒、回應上限 1 MB。中心約略化至 0.01 度，半徑增加 1600 公尺後查詢最多 80 筆，再按原選點篩選。此取樣不保證附近清單完整或最近 80 間。來源為 OSM node 或 way／relation center；中心點不是入口，直線距離不是路線。
+
+外部查詢明確同意後才進行，每 IP 20／小時且全站 80／24 小時 SQLite 固定時窗預算；未做資料快取、代理群集配額或服務 SLA。預算包含失敗嘗試，保護公共服務。上游錯誤回 503，不退回虛構店家。`nearby_provider` 可注入模擬測試，不代表上游在線成功。
+
+街道圖需另一個同意動作，以官方 OSM iframe 顯示約略 bbox，無私人定位 marker；CSP frame-src 只允許該官方域名，service worker 不攔截外部資料／圖磚。OSM attribution 留在結果與地圖旁，無批次下載或離線圖磚。
+
+前端搜尋與帳號載入使用請求序號，過時回應不覆寫新狀態；登出立即清除私有結果、對話框、定位與同意狀態，即使後續公開菜單讀取失敗也不留下舊餐桌。正式部署仍應避免 reverse-proxy／APM 記錄位置 body；應另訂保留／刪除政策。

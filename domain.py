@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
+from location import Coordinates, distance_meters
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -26,6 +28,7 @@ class Restaurant(StrictModel):
     source_url: HttpUrl | None = None
     verified_on: date
     fictional: bool
+    coordinates: Coordinates | None = None
     dishes: list[Dish] = Field(min_length=1, max_length=50)
 
     @model_validator(mode="after")
@@ -54,14 +57,23 @@ class Preferences(StrictModel):
     no_pork: bool = False
     no_spicy: bool = False
     max_walk: int = Field(ge=0, le=60, default=15)
+    max_distance_m: int = Field(strict=True, ge=100, le=5000, default=3000)
     cuisines: list[str] = Field(default_factory=list, max_length=8)
 
 
-def recommend(catalog, people, today):
+def recommend(catalog, people, today, area=None):
     eligible = []
     rejected = []
     for restaurant in catalog["restaurants"]:
         reasons = []
+        distance = None
+        if area:
+            if not restaurant.get("coordinates"):
+                reasons.append("缺少店家座標，無法判斷是否在共同集合點範圍內")
+            else:
+                distance = distance_meters(area, restaurant["coordinates"])
+                if distance > area["radius_m"]:
+                    reasons.append("超出共同集合點的直線距離範圍")
         age = (today - date.fromisoformat(restaurant["verified_on"])).days
         if age < 0 or age > 30:
             reasons.append("菜單查核日期超過 30 天或在未來，請先重新確認")
@@ -70,7 +82,11 @@ def recommend(catalog, people, today):
             preferences = person["preferences"]
             fitting = []
             for dish in restaurant["dishes"]:
-                if dish["price"] > preferences["budget"] or restaurant["walk_minutes"] > preferences["max_walk"]:
+                if dish["price"] > preferences["budget"]:
+                    continue
+                if area and (distance is None or distance > preferences.get("max_distance_m", 3000)):
+                    continue
+                if not area and restaurant["walk_minutes"] > preferences["max_walk"]:
                     continue
                 if preferences["vegetarian"] and dish["diet"] != "vegetarian":
                     continue
@@ -84,20 +100,20 @@ def recommend(catalog, people, today):
                     continue
                 fitting.append(dish)
             if not fitting:
-                reasons.append(person["nickname"] + " 沒有符合預算、飲食偏好及步行範圍的餐點")
+                reasons.append(person["nickname"] + " 沒有符合預算、飲食偏好及距離條件的餐點")
                 continue
             dish = min(fitting, key=lambda item: (item["price"], item["id"]))
             cuisine_score = 50 if restaurant["cuisine"] in preferences["cuisines"] else 25
-            score = round(cuisine_score + 35 * (preferences["budget"] - dish["price"]) / preferences["budget"]
-                          + max(0, 15 - restaurant["walk_minutes"]), 2)
+            proximity = max(0, 15 - 15 * distance / min(area["radius_m"], preferences.get("max_distance_m", 3000))) if area else max(0, 15 - restaurant["walk_minutes"])
+            score = round(cuisine_score + 35 * (preferences["budget"] - dish["price"]) / preferences["budget"] + proximity, 2)
             choices.append({"nickname": person["nickname"], "dish": dish, "score": score,
                             "remaining_budget": preferences["budget"] - dish["price"]})
         if reasons:
             rejected.append({"id": restaurant["id"], "name": restaurant["name"], "reasons": reasons})
         else:
-            eligible.append({**restaurant, "choices": choices,
+            eligible.append({**restaurant, "choices": choices, "distance_m": round(distance) if distance is not None else None,
                              "min_score": min(choice["score"] for choice in choices),
                              "mean_score": round(sum(choice["score"] for choice in choices) / len(choices), 2),
                              "group_total": sum(choice["dish"]["price"] for choice in choices)})
-    eligible.sort(key=lambda item: (-item["min_score"], -item["mean_score"], item["walk_minutes"], item["id"]))
+    eligible.sort(key=lambda item: (-item["min_score"], -item["mean_score"], item["distance_m"] if item["distance_m"] is not None else item["walk_minutes"], item["id"]))
     return {"eligible": eligible, "rejected": rejected}
